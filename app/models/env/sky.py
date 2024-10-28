@@ -32,6 +32,7 @@ class SimpleSky(AssetModelMixin, nn.Module):
         dir_embed_cfg.setdefault('use_tcnn_backend', use_tcnn_backend)
         self.embed_fn_view, input_ch_views = get_embedder(dir_embed_cfg, 3)
         
+        self.appear_embedding_type = appear_embed_cfg['type']
         self.use_appear_embedding = n_appear_embedding > 0
         # h_appear_embed
         if self.use_appear_embedding:
@@ -47,8 +48,25 @@ class SimpleSky(AssetModelMixin, nn.Module):
     def forward(self, v: torch.Tensor, *, h_appear_embed: torch.Tensor = None):
         network_input = self.embed_fn_view(v)
         if self.use_appear_embedding > 0:
-            network_input = torch.cat([network_input, h_appear_embed], dim=-1)
-        return self.blocks(network_input)
+            if not self.appear_embedding_type == 'urban_nerf':
+                network_input = torch.cat([network_input, h_appear_embed], dim=-1)
+                return self.blocks(network_input)
+            else:
+                h_appear_embed = self.embed_fn_appear(h_appear_embed)
+                network_input = torch.cat([network_input], dim=-1)
+                radiances = self.blocks(network_input)
+                
+                # reshape the Nx12 h_appear_embed to Nx3x3 mat and Nx3x1 vec
+                trans_mat = h_appear_embed.view(-1, 3, 4)[:, :3, :3]
+                trans_bias = h_appear_embed.view(-1, 3, 4)[:, :3, 3:]
+                # transform the radiance, and then add the bias
+                radiances = radiances.view(-1, 3, 1)
+                # radiances: Nx3x1, trans_mat: Nx3x3, trans_bias: Nx3x1
+                radiances = torch.matmul(trans_mat, radiances) + trans_bias
+                radiances = radiances.view(-1, 3)
+                
+                return radiances
+            
 
     @classmethod
     def compute_model_id(cls, scene: Scene = None, obj: SceneNode = None, class_name: str = None) -> str:

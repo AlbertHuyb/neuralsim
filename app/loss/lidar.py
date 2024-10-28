@@ -49,6 +49,7 @@ class DepthLoss(nn.Module):
             raise ValueError(f"Invalid fn_type={fn_type}")
 
     def forward(self, depth_pred: torch.Tensor, depth_gt: torch.Tensor, mask: torch.BoolTensor, far: float, it: int):
+        # import pdb; pdb.set_trace()
         w = self.w if self.w_fn is None else self.w_fn(it=it)
         depth_loss = self.fn(depth_pred, depth_gt, mask, far)
         return {'lidar_loss.depth': w * depth_loss}

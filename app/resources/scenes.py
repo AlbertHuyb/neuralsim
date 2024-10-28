@@ -243,6 +243,7 @@ class Scene(object):
                 if 'exposure' in data: d.update(exposure=Scalar(data['exposure'], device=device))
                 o.load_attr_segment(n_frames=odict['n_frames'], start_frame=odict.get('start_frame', 0), **d)
                 o.finish_attr_segments()
+            # import pdb; pdb.set_trace() 
             self.add_node(o, parent=parent)
             # Recursively load node's childrens
             if 'children' in odict:
@@ -446,6 +447,7 @@ class Scene(object):
         if only_valid:
             return IDListedDict([o for o in self.observer_groups_by_class_name['Camera'] if o.valid])
         else:
+            # import pdb; pdb.set_trace()
             return self.observer_groups_by_class_name['Camera']
 
     #------------------------------------------------------------------

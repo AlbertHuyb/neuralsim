@@ -172,7 +172,6 @@ def create_scene_bank(
     scenebank_cfg = scenebank_cfg.deepcopy()
     if (scenarios:=scenebank_cfg.pop('scenarios', None)) is None:
         scenarios = filter_scene(dataset)
-    
     # Select from raw processed dataset scenarios
     for scenario_cfg in scenarios:
         scene_id, start, stop = parse_scene_bank_cfg(scenario_cfg)

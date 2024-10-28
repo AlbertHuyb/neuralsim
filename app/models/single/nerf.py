@@ -7,7 +7,8 @@
 __all__ = [
     'NeRFObj', 
     'LoTDNeRFObj', 
-    'LoTDNeRFStreet', 
+    'LoTDNeRFStreet',
+    'MLPNeRFStreet', 
     'LoTDNeRFDistant', 
     'NeRFDistant'
 ]
@@ -113,6 +114,53 @@ class LoTDNeRFStreet(AssetMixin, LoTDNeRFModel):
     def compute_model_id(cls, scene: Scene = None, obj: SceneNode = None, class_name: str = None) -> str:
         return f"{cls.__name__}#{class_name or obj.class_name}#{scene.id}#{obj.id}"
 
+
+class MLPNeRFStreet(AssetMixin, NeRFModel):
+    """
+    NeRF network for single street-view scene, reprensented by MLP.
+    
+    MRO: MLPNeRFStreet -> AssetMixin -> NeRFModel -> EmbededNeRF -> NeRF -> ModelMixin -> nn.Module
+    """
+    assigned_to = AssetAssignment.OBJECT
+    is_ray_query_supported = True
+    @torch.no_grad()
+    def populate(self, scene: Scene = None, obj: SceneNode = None, config: ConfigDict = None, 
+                 dtype=torch.float, device=torch.device('cuda'), **kwargs):
+        """
+        1. Use the range of observers in the scene to determine the pose and scale of the obj, so that the network input is automatically unit input
+            For more descriptions, please refer to StreetSurf paper section 3.1
+        2. If there is a need to change or additionally assign some attributes to the obj
+        """
+        with torch.no_grad():
+            ret = scene.process_observer_infos(far_clip=config['extend_size'])
+            xyz_extend = ret.all_frustum_pts.view(-1,3)
+
+        # NOTE: Apply pre-loaded transform from dataset
+        scene.frozen_at(0)
+        xyz_extend = obj.world_transform.forward(xyz_extend, inv=True) / obj.scale.ratio() # From world to street_obj
+        scene.unfrozen()
+
+        """
+        The more scientific approach here is to find the smallest enclosing rectangular prism of these view cones (the axes of the BB do not necessarily have to be aligned).
+        Currently, a rather crude method is used, which may waste a some space on certain sequences.
+        """
+        bmin = xyz_extend.min(0).values
+        bmax = xyz_extend.max(0).values
+
+        if config.get('use_cuboid', True):
+            aabb = torch.stack([bmin, bmax], 0)
+        else:
+            radius = (bmax - bmin).max().item() / 2.
+            center = (bmax + bmin) / 2.
+            aabb = torch.stack([center - radius, center + radius], 0)
+        
+        NeRFModel.populate(self, aabb=aabb)
+
+    @classmethod
+    def compute_model_id(cls, scene: Scene = None, obj: SceneNode = None, class_name: str = None) -> str:
+        return f"{cls.__name__}#{class_name or obj.class_name}#{scene.id}#{obj.id}"
+
+
 class LoTDNeRFDistant(AssetMixin, LoTDNeRFDistantModel):
     """
     NeRF++ network for distant-view models, represented by LoTD encodings.
@@ -140,6 +188,7 @@ class LoTDNeRFDistant(AssetMixin, LoTDNeRFDistantModel):
             aabb = self.cr_obj.model.space.aabb
         else:
             aabb = None
+        # import pdb; pdb.set_trace()
         LoTDNeRFDistantModel.populate(self, aabb=aabb)
 
         # Determine whether renderer_mixin should include inf distance if not specified in config
